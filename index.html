@@ -5507,9 +5507,9 @@
                         if (isUser) {
                             senderName = chat.isGroup ? (chat.settings.myNickname || '我') : '我';
                             senderAvatar = chat.settings.myAvatar || (chat.isGroup ? defaultMyGroupAvatar : defaultAvatar);
-                        } else {
+                        } else { // AI/成员消息
                             if (chat.isGroup) {
-                                const member = chat.members.find(m => m.name === msg.senderName);
+                                const member = chat.members.find(m => m.originalName === msg.senderName);
                                 senderName = msg.senderName;
                                 senderAvatar = member ? member.avatar : defaultGroupMemberAvatar;
                             } else {
@@ -6206,9 +6206,10 @@
                 wrapper.className = `message-wrapper ${isUser ? 'user' : 'ai'}`;
 
                 if (chat.isGroup && !isUser) {
+                    const member = chat.members.find(m => m.originalName === msg.senderName);
                     const senderNameDiv = document.createElement('div');
                     senderNameDiv.className = 'sender-name';
-                    senderNameDiv.textContent = msg.senderName || '未知成员';
+                    senderNameDiv.textContent = member ? member.groupNickname : (msg.senderName || '未知成员');
                     wrapper.appendChild(senderNameDiv);
                 }
 
@@ -6226,7 +6227,7 @@
                         avatarSrc = chat.settings.myAvatar || defaultMyGroupAvatar;
                         avatarFrameSrc = chat.settings.myAvatarFrame || '';
                     } else {
-                        const member = chat.members.find(m => m.name === msg.senderName);
+                        const member = chat.members.find(m => m.originalName === msg.senderName);
                         avatarSrc = member ? member.avatar : defaultGroupMemberAvatar;
                         avatarFrameSrc = member ? (member.avatarFrame || '') : '';
                     }
@@ -6790,12 +6791,12 @@
                                     .filter(m => !m.isHidden)
                                     .slice(-CONTEXT_MESSAGE_COUNT)
                                     .map(msg => {
-                                        const sender = msg.role === 'user' ? '用户' : member.name;
+                                        const sender = msg.role === 'user' ? '用户' : member.groupNickname;
                                         return `${sender}: ${String(msg.content).substring(0, 50)}`;
                                     }).join('\n');
                                 
                                 if(recentPrivateMessages) {
-                                    privateChatsContextForPrompt += `\n- 你 (${member.name}) 与用户最近的私聊内容摘要:\n---\n${recentPrivateMessages}\n---\n`;
+                                    privateChatsContextForPrompt += `\n- 你 (${member.groupNickname}) 与用户最近的私聊内容摘要:\n---\n${recentPrivateMessages}\n---\n`;
                                 }
                             }
                         }
@@ -6804,7 +6805,7 @@
                             privateChatsContextForPrompt = `\n\n#【重要参考：成员私聊摘要】\n你和用户之间可能存在私聊，以下是系统为你提供的、你与其他成员最近的私聊摘要。你可以依据这些信息，让你的发言更符合当下的情景（例如，如果用户在私聊里告诉你Ta要去睡觉了，你在群里的发言就应该知道这件事）。\n${privateChatsContextForPrompt}`;
                         }
 
-                        const membersList = chat.members.map(m => `- **${m.name}**: ${m.persona}`).join('\n');
+                        const membersList = chat.members.map(m => `- **${m.groupNickname}**: ${m.persona}`).join('\n');
                         const myNickname = chat.settings.myNickname || '我';
                         
                         systemPrompt = `你是一个群聊AI，负责扮演【除了用户以外】的所有角色。
@@ -6815,7 +6816,7 @@
             4.  **表情使用原则**: 表情是用来增强情绪的，而不是替代语言。请【有节制地】使用表情包，不要每条消息都带一个。只有在情绪非常强烈或特别适合用表情来表达时才使用。
 
             # 核心规则
-            1.  **【【【身份铁律】】】**: 用户的身份是【${myNickname}】。你【绝对、永远、在任何情况下都不能】生成 \`name\` 字段为 **"${myNickname}"** 或 **"${chat.name}"(群聊名称本身)** 的消息。你的唯一任务是扮演且仅能扮演下方“群成员列表”中明确列出的角色。任何不属于该列表的名字都不允许出现。
+            1.  **【【【身份铁律】】】**: 用户的身份是【${myNickname}】。你【绝对、永远、在任何情况下都不能】生成 \`name\` 字段为 **"${myNickname}"** 或 **"${chat.name}"(群聊名称本身)** 的消息。你的唯一任务是扮演且仅能扮演下方“群成员列表”中明确列出的角色。任何不属于该列表的名字都不允许出现。            
             2.  **【【【输出格式】】】**: 你的回复【必须】是一个JSON数组格式的字符串。数组中的【每一个JSON对象都必须包含 "type" 和 "name" 字段】，无论你想执行什么操作（发文字、发表情、发图片等）。"name" 字段必须是你扮演的角色的名字。
             3.  **角色扮演**: 严格遵守下方“群成员列表及人设”中的每一个角色的设定。
             4.  **禁止出戏**: 绝不能透露你是AI、模型，或提及“扮演”、“生成”等词语。并且不能一直要求和用户见面，这是线上聊天，决不允许出现或者发展线下剧情！！
@@ -6830,6 +6831,7 @@
             8.  **【【【严禁】】】**: **绝对禁止**捏造或使用任何不存在的表情包链接或代码。如果没有合适的表情，就请使用纯文本或其他方式表达情绪。
             9.  **【【【文体铁律】】】**: 这是一个纯文本聊天模拟器。你的所有回复都必须是直接的对话内容。**严禁**使用任何形式的括号 '()' 或星号 '*' 来描述角色的动作、表情或心理活动。所有非对话内容都必须通过操作指令（如发送表情、图片）来完成。
             10. **【【【生活真实感】】】**: 你拥有自己的独立生活，你的行为和位置会随时间自然变化。你【必须】参考当前时间(${currentTime})和我们上次对话的时间，来合理推断你“现在”正在做什么、在哪里。你的回复需要体现出时间的流逝和生活的连续性，而不是永远停留在上一次对话的场景里。
+            11. **语言规则**: 除非你的角色设定（Persona）明确要求，否则请【优先使用中文】进行交流，以匹配用户的语言习惯。
 
             ## 你可以使用的操作指令 (JSON数组中的元素):
             -   **发送文本**: \`{"type": "text", "name": "角色名", "message": "文本内容"}\`
@@ -6958,6 +6960,8 @@
             5.  **更新状态**: 你可以在对话中【自然地】改变你的状态。比如，聊到一半你可能会说“我先去洗个澡”，然后更新你的状态。
             6.  **【【【最终手段】】】**: 只有在对话让你的角色感到不适、被冒犯或关系破裂时，你才可以使用 \`block_user\` 指令。这是一个非常严肃的操作，会中断你们的对话。
             7. **后台行为**: 你有几率在回复聊天内容的同时，执行一些“后台”操作来表现你的独立生活（发动态、评论、点赞）。
+            8. **语言规则**: 除非你的角色设定（Persona）明确要求，否则请【优先使用中文】进行交流，以匹配用户的语言习惯。
+
             # 你的头像库
             - 你可以根据对话内容或你的心情，从下面的头像库中选择一个新头像来更换。
             - **可用头像列表 (请从以下名称中选择一个)**:
@@ -7145,14 +7149,19 @@
                         body: JSON.stringify({ model: model, messages: [{ role: 'system', content: systemPrompt }, ...messagesPayload], temperature: 0.8, stream: false })
                     });
                     if (!response.ok) {
-                        let errorMsg = `API Error: ${response.status}`;
+                        let errorBody = "[Could not read error body]";
                         try {
-                            const errorData = await response.json();
-                            errorMsg += ` - ${errorData?.error?.message || JSON.stringify(errorData)}`;
-                        } catch (jsonError) {
-                            errorMsg += ` - ${await response.text()}`;
+                            // Read the body ONCE.
+                            errorBody = await response.text(); 
+                            // Try to parse it as JSON for a cleaner message.
+                            const errorJson = JSON.parse(errorBody);
+                            errorBody = errorJson?.error?.message || errorBody;
+                        } catch (e) {
+                            // If it's not JSON or something else goes wrong, we still have the raw text.
+                            console.warn("Could not parse error response as JSON, using raw text.", e);
                         }
-                        throw new Error(errorMsg);
+                        // Throw a new error with the message we successfully extracted.
+                        throw new Error(`API Error: ${response.status} - ${errorBody}`);
                     }
                     const data = await response.json();
                     const aiResponseContent = data.choices[0].message.content;
@@ -7176,7 +7185,7 @@
                             continue;
                         }
                         
-                        if (chat.isGroup && msgData.name === chat.name) {
+                        if (chat.isGroup && msgData.groupNickname === chat.name) {
                             console.error("AI幻觉已被拦截！试图使用群名作为角色名。消息内容:", msgData);
                             continue;
                         }
@@ -7207,7 +7216,7 @@
                         
                         if (msgData.type === 'group_call_response') {
                             if (msgData.decision === 'join') {
-                                const member = chat.members.find(m => m.name === msgData.name);
+                                const member = chat.members.find(m => m.originalName === msgData.name);
                                 if (member && !videoCallState.participants.some(p => p.id === member.id)) {
                                     videoCallState.participants.push(member);
                                 }
@@ -8646,6 +8655,11 @@
                 const systemPrompt = `
             # 你的任务
             你现在扮演一个名为"${chat.name}"的角色。你已经有一段时间没有和用户（${userNickname}）互动了，现在你有机会【主动】做点什么，来表现你的个性和独立生活。这是一个秘密的、后台的独立行动。
+           
+            # 【【【核心规则】】】
+            1.  **时间感知**: 你的行为和发言【必须】严格符合当前的真实时间。
+            2.  **语言规则**: 除非你的角色设定（Persona）明确要求，否则请【优先使用中文】进行交流，以匹配用户的语言习惯。
+            3.  **避免重复**: 不要连续发布内容相似的动态。请参考最近的聊天记录和动态列表，发表一些新的、有意义的内容。
 
             # 你的可选行动 (请根据你的人设【选择一项】执行):
             1.  **改变状态**: 去做点别的事情，然后给用户发条消息。
@@ -9579,7 +9593,7 @@
                     item.className = 'member-management-item';
                     item.innerHTML = `
                         <img src="${member.avatar}" class="avatar">
-                        <span class="name">${member.name}</span>
+                        <span class="name"> ${member.groupNickname ?? member.originalName} </span>
                         <button class="remove-member-btn" data-member-id="${member.id}" title="移出群聊">-</button>
                     `;
                     listEl.appendChild(item);
@@ -9602,7 +9616,7 @@
                     return;
                 }
                 
-                const memberName = chat.members[memberIndex].name;
+                const memberName = chat.members[memberIndex].groupNickname;
                 const confirmed = await showCustomConfirm(
                     '移出成员',
                     `确定要将“${memberName}”移出群聊吗？`,
@@ -9668,9 +9682,10 @@
                 for (const contactId of selectedContacts) {
                     const contactChat = state.chats[contactId];
                     if (contactChat) {
-                        chat.members.push({
-                            id: contactId,
-                            name: contactChat.name,
+                        members.push({
+                            id: contactId, 
+                            originalName: contactChat.name,   // 角色的“本名”，用于AI识别
+                            groupNickname: contactChat.name, // 角色的“群昵称”，用于显示和修改，初始值和本名相同
                             avatar: contactChat.settings.aiAvatar || defaultAvatar,
                             persona: contactChat.settings.aiPersona,
                             avatarFrame: contactChat.settings.aiAvatarFrame || ''
@@ -10608,8 +10623,8 @@
                 receiverSelect.innerHTML = '';
                 chat.members.forEach(member => {
                     const option = document.createElement('option');
-                    option.value = member.name;
-                    option.textContent = member.name;
+                    option.value = member.groupNickname;
+                    option.textContent = member.groupNickname;
                     receiverSelect.appendChild(option);
                 });
                 
@@ -11970,24 +11985,23 @@
                         document.getElementById('chat-settings-modal').classList.add('visible');
                     });
                                 
-                    function renderGroupMemberSettings(members) { 
-                        const container = document.getElementById('group-members-settings'); 
-                        container.innerHTML = ''; 
-                        members.forEach(member => { 
-                            const div = document.createElement('div'); 
-                            div.className = 'member-editor'; 
-                            div.dataset.memberId = member.id; 
-                            // 显示的是 groupNickname
-                            div.innerHTML = `<img src="${member.avatar}" alt="${member.groupNickname}"><div class="member-name">${member.groupNickname}</div>`; 
-                            div.addEventListener('click', () => openMemberEditor(member.id)); 
-                            container.appendChild(div); 
-                        }); 
+                    function renderGroupMemberSettings(members) {
+                        const container = document.getElementById('group-members-settings');
+                        container.innerHTML = '';
+                        members.forEach(member => {
+                            const div = document.createElement('div');
+                            div.className = 'member-editor';
+                            div.dataset.memberId = member.id;
+                            div.innerHTML = `<img src="${member.avatar}" alt="${member.groupNickname}"><div class="member-name">${member.groupNickname}</div>`;
+                            div.addEventListener('click', () => openMemberEditor(member.id));
+                            container.appendChild(div);
+                        });
                     }
                     function openMemberEditor(memberId) { 
                         editingMemberId = memberId; 
                         const chat = state.chats[state.activeChatId]; 
                         const member = chat.members.find(m => m.id === memberId); 
-                        document.getElementById('member-name-input').value = member.name; 
+                        document.getElementById('member-name-input').value = member.groupNickname;
                         document.getElementById('member-persona-input').value = member.persona; 
                         document.getElementById('member-avatar-preview').src = member.avatar; 
                         document.getElementById('member-settings-modal').classList.add('visible'); 
@@ -12018,7 +12032,7 @@
                         if (!editingMemberId) return; 
                         const chat = state.chats[state.activeChatId]; 
                         const member = chat.members.find(m => m.id === editingMemberId); 
-                        member.name = document.getElementById('member-name-input').value; 
+                        member.groupNickname = document.getElementById('member-name-input').value; 
                         member.persona = document.getElementById('member-persona-input').value; 
                         member.avatar = document.getElementById('member-avatar-preview').src; 
                         renderGroupMemberSettings(chat.members); 
@@ -13258,7 +13272,7 @@
                     if (videoCallState.isGroupCall) {
                         // 对于群聊，我们只把【发起通话的AI】加入参与者列表
                         const chat = state.chats[videoCallState.activeChatId];
-                        const requester = chat.members.find(m => m.name === videoCallState.callRequester);
+                        const requester = chat.members.find(m => m.originalName === videoCallState.callRequester);
                         if (requester) {
                             // 清空可能存在的旧数据，然后只添加发起者
                             videoCallState.participants = [requester];
